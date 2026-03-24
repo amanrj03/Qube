@@ -183,7 +183,7 @@ export default function TestCreator() {
     return fd;
   };
 
-  const onProgress = (e: ProgressEvent) => setUploadProgress(Math.round((e.loaded * 100) / e.total));
+  const onProgress = (e: import('axios').AxiosProgressEvent) => setUploadProgress(Math.round(((e.loaded ?? 0) * 100) / (e.total ?? 1)));
 
   const saveDraft = async () => {
     if (!testName.trim()) { setModal({ show: true, title: 'Validation Error', message: 'Please enter test name', type: 'warning' }); return; }
