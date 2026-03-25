@@ -188,27 +188,57 @@ export default function TestCreator() {
     input.click();
   };
 
-  // Upload all File objects one-by-one to /api/upload/image, replace with URLs in sections state
+  // Upload all File objects in size-based batches (<4MB each) to /api/upload/image, replace with URLs
   const uploadImagesQueue = async (currentSections: Section[]): Promise<Section[]> => {
     const result = currentSections.map((s) => ({ ...s, questions: s.questions.map((q) => ({ ...q })) }));
-    const queue: { si: number; qi: number; field: 'questionImage' | 'solutionImage'; file: File }[] = [];
+
+    // Build flat list of all File items that need uploading
+    type UploadItem = { si: number; qi: number; field: 'questionImage' | 'solutionImage'; file: File };
+    const items: UploadItem[] = [];
     result.forEach((s, si) => s.questions.forEach((q, qi) => {
-      if (q.questionImage instanceof File) queue.push({ si, qi, field: 'questionImage', file: q.questionImage });
-      if (q.solutionImage instanceof File) queue.push({ si, qi, field: 'solutionImage', file: q.solutionImage });
+      if (q.questionImage instanceof File) items.push({ si, qi, field: 'questionImage', file: q.questionImage });
+      if (q.solutionImage instanceof File) items.push({ si, qi, field: 'solutionImage', file: q.solutionImage });
     }));
-    let done = 0;
-    for (const item of queue) {
+    if (items.length === 0) return result;
+
+    // Group into batches where each batch total size < 4MB
+    const MAX_BATCH_BYTES = 4 * 1024 * 1024;
+    const batches: UploadItem[][] = [];
+    let currentBatch: UploadItem[] = [];
+    let currentSize = 0;
+    for (const item of items) {
+      if (currentBatch.length > 0 && currentSize + item.file.size > MAX_BATCH_BYTES) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentSize = 0;
+      }
+      currentBatch.push(item);
+      currentSize += item.file.size;
+    }
+    if (currentBatch.length > 0) batches.push(currentBatch);
+
+    let uploadedCount = 0;
+    for (const batch of batches) {
       const fd = new FormData();
-      fd.append('image', item.file);
-      fd.append('imageType', item.field === 'questionImage' ? 'question' : 'solution');
+      // Determine dominant imageType for this batch
+      const imageType = batch[0].field === 'questionImage' ? 'question' : 'solution';
+      fd.append('imageType', imageType);
+      batch.forEach((item, idx) => fd.append(`images[${idx}]`, item.file));
+
       const res = await fetch('/api/upload/image', { method: 'POST', body: fd });
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Image upload failed'); }
-      const { url } = await res.json();
-      (result[item.si].questions[item.qi] as any)[item.field] = url;
-      done++;
-      setUploadProgress(Math.round((done / queue.length) * 100));
+      const { urls } = await res.json();
+
+      // Map returned URLs back to the correct questions in order
+      batch.forEach((item, idx) => {
+        (result[item.si].questions[item.qi] as any)[item.field] = urls[idx];
+      });
+
+      uploadedCount += batch.length;
+      setUploadProgress(Math.round((uploadedCount / items.length) * 100));
     }
-    if (queue.length > 0) setSections(result);
+
+    setSections(result);
     return result;
   };
 
