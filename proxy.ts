@@ -16,7 +16,7 @@ function decodeJwtPayload(token: string): { role?: string } | null {
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  const isOrgRoute = pathname.startsWith('/dashboard');
+  const isOrgRoute = pathname.startsWith('/dashboard') || pathname.startsWith('/preview');
   const isStudentRoute =
     pathname === '/student' ||
     pathname.startsWith('/student/') ||
@@ -46,6 +46,7 @@ export const config = {
   matcher: [
     '/dashboard',
     '/dashboard/:path*',
+    '/preview/:path*',
     '/student',
     '/student/:path*',
     '/instructions/:path*',

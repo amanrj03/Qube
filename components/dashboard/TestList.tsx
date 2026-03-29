@@ -114,6 +114,7 @@ export default function TestList({ filter, title, subtitle }: Props) {
   const [classes, setClasses] = useState<Class[]>([]);
   const [goLiveTarget, setGoLiveTarget] = useState<Test | null>(null);
   const [editScheduleTarget, setEditScheduleTarget] = useState<Test | null>(null);
+  const [answerKeyTarget, setAnswerKeyTarget] = useState<Test | null>(null);
 
   const fetchAll = async () => {
     const [testRes, clsRes] = await Promise.all([axios.get('/api/tests'), axios.get('/api/org/classes')]);
@@ -190,32 +191,35 @@ export default function TestList({ filter, title, subtitle }: Props) {
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <h3 className="font-semibold text-gray-800 truncate">{test.name}</h3>
                     {test.isDraft && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">Draft</span>}
-                    {test.isLive && !isExpired && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse inline-block" />Live</span>}
-                    {isExpired && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Ended</span>}
+                    {filter !== 'all' && test.isLive && !isExpired && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse inline-block" />Live</span>}
+                    {filter !== 'all' && isExpired && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Ended</span>}
                   </div>
 
                   {/* Stats */}
-                  <div className="flex flex-wrap gap-3 text-xs text-gray-500 mb-2">
+                  <div className="flex flex-wrap gap-3 text-xs text-gray-500 mb-4">
                     <span>⏱ {Math.floor(test.duration / 60)}h {test.duration % 60}m</span>
                     <span>📊 {test.totalMarks} marks</span>
                     <span>❓ {questions} questions</span>
                     {filter === 'results' && <span className="text-green-700 font-medium">✓ {completedCount} submitted</span>}
                   </div>
 
-                  {/* Schedule */}
-                  {(test.startTime || test.endTime) && (
+                  {/* Schedule — only for live and results, not all */}
+                  {filter !== 'all' && (test.startTime || test.endTime) && (
                     <div className="text-xs text-gray-400 mb-2">
                       🕐 {fmtTime(test.startTime)} → {fmtTime(test.endTime)}
                     </div>
                   )}
 
-                  <p className="text-xs text-gray-400 mb-4">
-                    <span className="text-gray-500">Classes: </span>{getClassNames(test.testClasses)}
-                  </p>
+                  {/* Classes — only for live and results, not all */}
+                  {filter !== 'all' && (
+                    <p className="text-xs text-gray-400 mb-4">
+                      <span className="text-gray-500">Classes: </span>{getClassNames(test.testClasses)}
+                    </p>
+                  )}
 
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2">
-                    {/* ALL TESTS: Go Live (disabled if currently live and not expired), Edit, Delete only */}
+                    {/* ALL TESTS: Go Live, Answer Key, Edit, Delete */}
                     {filter === 'all' && (
                       <>
                         <button
@@ -230,6 +234,14 @@ export default function TestList({ filter, title, subtitle }: Props) {
                         >
                           {test.isLive && !isExpired ? '✓ Already Live' : '▶ Go Live'}
                         </button>
+                        <button onClick={() => setAnswerKeyTarget(test)}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition">
+                          🗝 Answer Key
+                        </button>
+                        <a href={`/preview/${test.id}`} target="_blank" rel="noreferrer"
+                          className="text-xs px-3 py-1.5 rounded-lg border border-purple-200 text-purple-600 hover:bg-purple-50 transition">
+                          👁 Preview
+                        </a>
                         <button onClick={() => router.push(`/dashboard/tests/create?edit=${test.id}`)}
                           className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition">
                           ✏️ Edit
@@ -241,16 +253,12 @@ export default function TestList({ filter, title, subtitle }: Props) {
                       </>
                     )}
 
-                    {/* DRAFTS: Go Live, Edit, Delete */}
+                    {/* DRAFTS: Continue Editing, Delete only */}
                     {filter === 'drafts' && (
                       <>
-                        <button onClick={() => setGoLiveTarget(test)}
-                          className="text-xs px-3 py-1.5 rounded-lg font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition">
-                          ▶ Go Live
-                        </button>
                         <button onClick={() => router.push(`/dashboard/tests/create?edit=${test.id}`)}
-                          className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition">
-                          ✏️ Edit
+                          className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition font-medium">
+                          ✏️ Continue Editing
                         </button>
                         <button onClick={() => deleteTest(test.id, test.name)}
                           className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition">
@@ -328,6 +336,69 @@ export default function TestList({ filter, title, subtitle }: Props) {
           onClose={() => setEditScheduleTarget(null)}
           onDone={() => { setEditScheduleTarget(null); fetchAll(); }}
         />
+      )}
+
+      {/* Answer Key Modal */}
+      {answerKeyTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="font-bold text-gray-800">Answer Key</h2>
+                <p className="text-xs text-gray-500 mt-0.5">{answerKeyTarget.name}</p>
+              </div>
+              <button onClick={() => setAnswerKeyTarget(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+
+            <div className="overflow-y-auto px-6 py-4 space-y-8">
+              {(answerKeyTarget as any).sections?.map((section: any, si: number) => {
+                const isInteger = section.questionType === 'INTEGER';
+                const isMultiple = section.questionType === 'MULTIPLE_CORRECT';
+                return (
+                  <div key={section.id}>
+                    <h3 className="text-center font-semibold text-indigo-700 uppercase tracking-wide text-sm mb-3">
+                      {section.name}
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-sm text-center">
+                        <tbody>
+                          <tr className="border border-gray-300">
+                            <td className="border border-gray-300 px-2 py-1.5 font-semibold bg-gray-50 text-gray-600 text-xs">Q.</td>
+                            {section.questions.map((q: any, qi: number) => (
+                              <td key={q.id} className="border border-gray-300 px-2 py-1.5 font-medium text-gray-700 min-w-[36px]">
+                                {qi + 1}
+                              </td>
+                            ))}
+                          </tr>
+                          <tr className="border border-gray-300">
+                            <td className="border border-gray-300 px-2 py-1.5 font-semibold bg-gray-50 text-gray-600 text-xs">A.</td>
+                            {section.questions.map((q: any) => {
+                              let answer = '—';
+                              if (isInteger) answer = q.correctInteger?.toString() ?? '—';
+                              else if (isMultiple) answer = q.correctOptions ? q.correctOptions.split(',').join(',') : '—';
+                              else answer = q.correctOption ?? '—';
+                              return (
+                                <td key={q.id} className="border border-gray-300 px-2 py-1.5 font-semibold text-gray-800">
+                                  {answer}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="px-6 py-3 border-t border-gray-100 flex justify-end">
+              <button onClick={() => setAnswerKeyTarget(null)} className="bg-gray-100 text-gray-700 px-5 py-2 rounded-lg text-sm hover:bg-gray-200 transition">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

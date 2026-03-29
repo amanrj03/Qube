@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -16,15 +16,430 @@ import {
   TrendingUp as TrendingUpIcon
 } from 'lucide-react';
 
+// ─── Image with skeleton loader ──────────────────────────────────────────────
+
+function ImageWithSkeleton({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const imgRef = useCallback((node: HTMLImageElement | null) => {
+    if (!node) return;
+    // If browser already has it cached, complete fires before onLoad attaches
+    if (node.complete) {
+      setLoaded(true);
+      if (node.naturalWidth === 0) setError(true);
+    }
+  }, []);
+
+  useEffect(() => { setLoaded(false); setError(false); }, [src]);
+
+  return (
+    <div className="relative w-full">
+      {!loaded && !error && (
+        <div className="w-full rounded animate-pulse bg-gray-200" style={{ minHeight: '180px' }} />
+      )}
+      {error && (
+        <div className="w-full rounded bg-gray-100 flex items-center justify-center text-sm text-gray-400" style={{ minHeight: '80px' }}>
+          Image unavailable
+        </div>
+      )}
+      <img
+        ref={imgRef}
+        src={src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        onError={() => { setLoaded(true); setError(true); }}
+        className={`max-w-full h-auto rounded transition-opacity duration-200 ${loaded && !error ? 'opacity-100' : 'opacity-0 absolute inset-0 w-0 h-0'}`}
+      />
+    </div>
+  );
+}
+
+// ─── Question Carousel ───────────────────────────────────────────────────────
+
+function QuestionCarousel({ questions, currentSection, getAnswerForQuestion }: {
+  questions: any[];
+  currentSection: any;
+  getAnswerForQuestion: (id: string) => any;
+}) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const active = questions[activeIdx];
+  const answer = getAnswerForQuestion(active?.id);
+  const isCorrect = answer?.isCorrect;
+  const marksAwarded = answer?.marksAwarded ?? 0;
+  const timeSpent = answer?.timeSpent ?? 0;
+  const originalIndex = currentSection.questions.findIndex((q: any) => q.id === active?.id);
+
+  const statusColor = isCorrect === true ? 'green' : isCorrect === false ? 'red' : 'amber';
+  const statusLabel = isCorrect === true ? 'Correct' : isCorrect === false ? 'Wrong' : 'Unattempted';
+  const statusBg: Record<string, string> = { green: 'bg-green-50 border-green-200', red: 'bg-red-50 border-red-200', amber: 'bg-amber-50 border-amber-200' };
+  const statusText: Record<string, string> = { green: 'text-green-700', red: 'text-red-700', amber: 'text-amber-700' };
+  const statusBadge: Record<string, string> = { green: 'bg-green-100 text-green-700', red: 'bg-red-100 text-red-700', amber: 'bg-amber-100 text-amber-700' };
+
+  const getBtnColor = (q: any) => {
+    const a = getAnswerForQuestion(q.id);
+    if (a?.isCorrect === true)  return 'bg-green-500 text-white';
+    if (a?.isCorrect === false) return 'bg-red-500 text-white';
+    return 'bg-amber-400 text-white';
+  };
+
+  const getYourAnswer = () => {
+    const qType = currentSection.questionType;
+    if (qType === 'SINGLE_CORRECT' || qType === 'MATRIX_MATCH')
+      return answer?.selectedOption ? `Option ${answer.selectedOption}` : 'Not attempted';
+    if (qType === 'MULTIPLE_CORRECT') {
+      if (!answer?.selectedOptions) return 'Not attempted';
+      const opts = typeof answer.selectedOptions === 'string'
+        ? answer.selectedOptions.split(',').map((o: string) => o.trim())
+        : answer.selectedOptions;
+      return opts.map((o: string) => `Option ${o}`).join(', ');
+    }
+    if (qType === 'INTEGER')
+      return (answer?.integerAnswer !== null && answer?.integerAnswer !== undefined) ? answer.integerAnswer.toString() : 'Not attempted';
+    return 'Not attempted';
+  };
+
+  const getCorrectAnswer = () => {
+    const qType = currentSection.questionType;
+    if (qType === 'SINGLE_CORRECT' || qType === 'MATRIX_MATCH')
+      return active?.correctOption ? `Option ${active.correctOption}` : 'N/A';
+    if (qType === 'MULTIPLE_CORRECT') {
+      if (!active?.correctOptions) return 'N/A';
+      const opts = typeof active.correctOptions === 'string'
+        ? active.correctOptions.split(',').map((o: string) => o.trim())
+        : active.correctOptions;
+      return opts.map((o: string) => `Option ${o}`).join(', ');
+    }
+    if (qType === 'INTEGER')
+      return (active?.correctInteger !== null && active?.correctInteger !== undefined) ? active.correctInteger.toString() : 'N/A';
+    return 'N/A';
+  };
+
+  return (
+    <div>
+      {/* Question number palette */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {questions.map((q: any, i: number) => {
+          const origIdx = currentSection.questions.findIndex((cq: any) => cq.id === q.id);
+          return (
+            <button key={q.id} onClick={() => setActiveIdx(i)}
+              className={`w-8 h-8 rounded-md text-xs font-bold transition-all ${getBtnColor(q)} ${activeIdx === i ? 'ring-2 ring-offset-1 ring-gray-500 scale-110' : 'hover:scale-105 opacity-80 hover:opacity-100'}`}>
+              {origIdx + 1}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div className="flex gap-4 mb-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-500 inline-block" />Correct</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-500 inline-block" />Wrong</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block" />Unattempted</span>
+      </div>
+
+      {/* Question card */}
+      {active && (
+        <motion.div key={active.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}
+          className={`border rounded-xl overflow-hidden ${statusBg[statusColor]}`}>
+
+          {/* ── Navigation bar at top ── */}
+          <div className="flex items-center justify-between px-4 py-2.5 bg-white/60 border-b border-current/10">
+            <button
+              onClick={() => setActiveIdx((i) => Math.max(0, i - 1))}
+              disabled={activeIdx === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
+            >
+              ← Prev
+            </button>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-foreground">Q {originalIndex + 1}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge[statusColor]}`}>{statusLabel}</span>
+              <span className={`text-sm font-bold ${marksAwarded > 0 ? 'text-green-600' : marksAwarded < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                {marksAwarded > 0 ? '+' : ''}{marksAwarded}
+              </span>
+              {timeSpent > 0 && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="w-3 h-3" />{formatTime(timeSpent)}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground">{activeIdx + 1}/{questions.length}</span>
+            </div>
+            <button
+              onClick={() => setActiveIdx((i) => Math.min(questions.length - 1, i + 1))}
+              disabled={activeIdx === questions.length - 1}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
+            >
+              Next →
+            </button>
+          </div>
+
+          {/* ── Question image ── */}
+          <div className="p-4">
+            {active.questionImage ? (
+              <div className="mb-4 bg-white rounded-lg border border-gray-200 p-2">
+                <ImageWithSkeleton src={active.questionImage} alt={`Q${originalIndex + 1}`} />
+              </div>
+            ) : (
+              <div className="mb-4 bg-white/60 rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-muted-foreground">
+                No question image
+              </div>
+            )}
+
+            {/* ── Your answer vs Correct answer ── */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-white rounded-lg border border-gray-200 p-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Your Answer</p>
+                <p className={`text-base font-bold ${statusText[statusColor]}`}>{getYourAnswer()}</p>
+              </div>
+              <div className="bg-white rounded-lg border border-green-200 p-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Correct Answer</p>
+                <p className="text-base font-bold text-green-700">{getCorrectAnswer()}</p>
+              </div>
+            </div>
+
+            {/* ── Solution image ── */}
+            {active.solutionImage && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Solution</p>
+                <div className="bg-white rounded-lg border border-gray-200 p-2">
+                  <ImageWithSkeleton src={active.solutionImage} alt={`Solution ${originalIndex + 1}`} />
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+// ─── Memoized Graphical Analysis — never re-renders on section/filter changes ─
+
+const CHART_COLORS_STATIC: Record<string, string> = {
+  Physics: '#4F46E5',    // indigo
+  Chemistry: '#059669',  // emerald
+  Mathematics: '#7C3AED', // violet
+  correct: '#059669',
+  wrong: '#DC2626',
+  unattempted: '#D97706',
+  maxMarks: '#E5E7EB',
+};
+const PIE_COLORS_STATIC = ['#4F46E5', '#059669', '#7C3AED', '#D97706', '#DC2626', '#0EA5E9'];
+const REMAINING_TIME_COLOR_STATIC = '#CBD5E1';
+
+const GraphicalAnalysisSection = memo(function GraphicalAnalysisSection({ processedChartData, timeDistributionData, lineChartData, totalMarks }: {
+  processedChartData: any[] | null;
+  timeDistributionData: any[] | null;
+  lineChartData: any[] | null;
+  totalMarks: number;
+}) {
+  const C = CHART_COLORS_STATIC;
+
+  const Tooltip_ = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="glass rounded-xl p-4 border border-border/50 shadow-lg">
+        <p className="text-foreground font-medium">{label}</p>
+        {payload.map((e: any, i: number) => <p key={i} style={{ color: e.color }} className="text-sm">{`${e.dataKey}: ${e.value}`}</p>)}
+      </div>
+    );
+  };
+
+  const PieTip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div className="glass rounded-xl p-4 border border-border/50 shadow-lg">
+        <p className="text-foreground font-medium">{d.subject}</p>
+        <p className="text-sm" style={{ color: payload[0].color }}>
+          {payload[0].dataKey === 'accuracy' ? `Accuracy: ${d.accuracy}%` : `Time: ${d.timeMinutes} min`}
+        </p>
+      </div>
+    );
+  };
+
+  const subjectAreas = useMemo(() => {
+    const data = lineChartData || [];
+    if (!data.length) return [];
+    const areas: any[] = [];
+    let cur: string | null = null, start: number | null = null;
+    data.forEach((p, i) => {
+      if (cur !== p.subject) {
+        if (cur && start !== null) areas.push({ subject: cur, x1: start, x2: data[i - 1].questionNumber, color: C[cur] });
+        cur = p.subject; start = p.questionNumber;
+      }
+    });
+    if (cur && start !== null) areas.push({ subject: cur, x1: start, x2: data[data.length - 1].questionNumber, color: C[cur] });
+    return areas;
+  }, [lineChartData]);
+
+  const makeDot = (dc: string) => (props: any) => {
+    const { payload, cx, cy } = props;
+    const color = payload?.isCorrect === true ? (C[payload?.subject] || dc) : payload?.isCorrect === false ? '#EF4444' : '#9CA3AF';
+    return <circle cx={cx} cy={cy} r={4} fill={color} stroke={color} strokeWidth={2} />;
+  };
+  const makeActiveDot = (dc: string) => (props: any) => {
+    const { payload, cx, cy } = props;
+    const color = payload?.isCorrect === true ? (C[payload?.subject] || dc) : payload?.isCorrect === false ? '#EF4444' : '#9CA3AF';
+    return <circle cx={cx} cy={cy} r={6} fill={color} stroke={color} strokeWidth={2} />;
+  };
+
+  const Legend_ = () => (
+    <div className="flex justify-center gap-6 mt-4 pt-4 border-t border-border/20">
+      {['Physics', 'Chemistry', 'Mathematics'].map((s) => (
+        <div key={s} className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: C[s] }} />
+          <span className="text-sm text-muted-foreground">{s}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <motion.section initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.6 }}>
+      <div className="flex items-center gap-2 mb-6">
+        <BarChart3 className="w-6 h-6 text-primary" />
+        <h2 className="text-xl font-semibold text-foreground">Graphical Analysis</h2>
+      </div>
+
+      <div className="mb-8">
+        <h3 className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-primary" />Performance Overview
+        </h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Subject Performance */}
+          <div className="glass rounded-2xl p-6 card-hover">
+            <div className="flex items-center gap-2 mb-4"><BarChart3 className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Subject Performance</h3></div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={processedChartData || undefined}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                <XAxis dataKey="subject" stroke="hsl(var(--muted-foreground))" />
+                <YAxis stroke="hsl(var(--muted-foreground))" allowDecimals={false} />
+                <Tooltip content={<Tooltip_ />} /><Legend />
+                <Bar dataKey="correct" fill={C.correct} radius={[4,4,0,0]} />
+                <Bar dataKey="wrong" fill={C.wrong} radius={[4,4,0,0]} />
+                <Bar dataKey="unattempted" fill={C.unattempted} radius={[4,4,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {/* Subject Accuracy */}
+          <div className="glass rounded-2xl p-6 card-hover">
+            <div className="flex items-center gap-2 mb-4"><Target className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Subject Accuracy</h3></div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={processedChartData || undefined}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                <XAxis dataKey="subject" stroke="hsl(var(--muted-foreground))" />
+                <YAxis stroke="hsl(var(--muted-foreground))" domain={[0,100]} tickFormatter={(v: number) => `${v}%`} />
+                <Tooltip content={<Tooltip_ />} /><Legend />
+                <Bar dataKey="accuracy" fill="#06B6D4" radius={[4,4,0,0]} name="Accuracy %" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {/* Marks Distribution */}
+          <div className="glass rounded-2xl p-6 card-hover">
+            <div className="flex items-center gap-2 mb-4"><Award className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Marks Distribution</h3></div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={processedChartData || undefined}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                <XAxis dataKey="subject" stroke="hsl(var(--muted-foreground))" />
+                <YAxis stroke="hsl(var(--muted-foreground))" />
+                <Tooltip content={<Tooltip_ />} /><Legend />
+                <Bar dataKey="marks" fill="#10B981" radius={[4,4,0,0]} name="Obtained Marks" />
+                <Bar dataKey="maxMarks" fill={C.maxMarks} radius={[4,4,0,0]} name="Maximum Marks" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {/* Time Spent */}
+          <div className="glass rounded-2xl p-6 card-hover">
+            <div className="flex items-center gap-2 mb-4"><Clock className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Time Spent Distribution</h3></div>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie data={timeDistributionData || undefined} cx="50%" cy="50%" labelLine={false} label={({ subject, timeMinutes }: any) => `${subject}: ${timeMinutes}min`} outerRadius={80} dataKey="timeMinutes">
+                  {timeDistributionData?.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={entry.isRemainingTime ? REMAINING_TIME_COLOR_STATIC : PIE_COLORS_STATIC[index % PIE_COLORS_STATIC.length]} />
+                  ))}
+                </Pie>
+                <Tooltip content={<PieTip />} />
+                <Legend formatter={(_: any, entry: any) => entry.payload.subject} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-8">
+        <h3 className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
+          <TrendingUpIcon className="w-5 h-5 text-primary" />Detailed Analysis
+        </h3>
+        <div className="grid grid-cols-1 gap-6">
+          {/* Score vs Question */}
+          <div className="glass rounded-2xl p-6 card-hover">
+            <div className="flex items-center gap-2 mb-4"><TrendingUpIcon className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Score vs Question Number</h3></div>
+            <ResponsiveContainer width="100%" height={350}>
+              <LineChart data={lineChartData || undefined}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                {subjectAreas.map((a: any, i: number) => <ReferenceArea key={i} x1={a.x1} x2={a.x2} fill={a.color} fillOpacity={0.1} stroke="none" />)}
+                <XAxis dataKey="questionNumber" stroke="hsl(var(--muted-foreground))" domain={[1,'dataMax']} />
+                <YAxis stroke="hsl(var(--muted-foreground))" domain={[0, totalMarks]} />
+                <Tooltip content={({ active, payload, label }: any) => {
+                  if (!active || !payload?.length) return null;
+                  const d = payload[0].payload;
+                  return <div className="glass rounded-xl p-4 border border-border/50 shadow-lg"><p className="text-foreground font-medium">Question {label}</p><p className="text-sm" style={{ color: C[d.subject] }}>Subject: {d.subject}</p><p className="text-sm">Cumulative Score: {d.cumulativeMarks}</p><p className="text-sm">This Question: {d.marks > 0 ? '+' : ''}{d.marks}</p></div>;
+                }} />
+                <Line type="monotone" dataKey="cumulativeMarks" stroke="#06B6D4" strokeWidth={3} dot={makeDot('#3B82F6')} activeDot={makeActiveDot('#3B82F6')} connectNulls={false} />
+              </LineChart>
+            </ResponsiveContainer>
+            <Legend_ />
+          </div>
+          {/* Accuracy Progression */}
+          <div className="glass rounded-2xl p-6 card-hover">
+            <div className="flex items-center gap-2 mb-4"><Target className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Accuracy Progression During Test</h3></div>
+            <ResponsiveContainer width="100%" height={350}>
+              <LineChart data={lineChartData || undefined}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                {subjectAreas.map((a: any, i: number) => <ReferenceArea key={i} x1={a.x1} x2={a.x2} fill={a.color} fillOpacity={0.1} stroke="none" />)}
+                <XAxis dataKey="questionNumber" stroke="hsl(var(--muted-foreground))" domain={[1,'dataMax']} />
+                <YAxis stroke="hsl(var(--muted-foreground))" domain={[0,100]} tickFormatter={(v: number) => `${v}%`} />
+                <Tooltip content={({ active, payload, label }: any) => {
+                  if (!active || !payload?.length) return null;
+                  const d = payload[0].payload;
+                  return <div className="glass rounded-xl p-4 border border-border/50 shadow-lg"><p className="text-foreground font-medium">After Question {label}</p><p className="text-sm" style={{ color: C[d.subject] }}>Subject: {d.subject}</p><p className="text-sm">Overall Accuracy: {d.accuracy}%</p><p className="text-sm">This Question: {d.isCorrect === true ? 'Correct ✅' : d.isCorrect === false ? 'Wrong ❌' : 'Unattempted ⏸️'}</p></div>;
+                }} />
+                <Line type="monotone" dataKey="accuracy" stroke="#06B6D4" strokeWidth={3} dot={makeDot('#10B981')} activeDot={makeActiveDot('#10B981')} connectNulls={false} />
+              </LineChart>
+            </ResponsiveContainer>
+            <Legend_ />
+          </div>
+          {/* Time per Question */}
+          <div className="glass rounded-2xl p-6 card-hover">
+            <div className="flex items-center gap-2 mb-4"><Clock className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Time Spent per Question</h3></div>
+            <ResponsiveContainer width="100%" height={350}>
+              <LineChart data={lineChartData || undefined}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                {subjectAreas.map((a: any, i: number) => <ReferenceArea key={i} x1={a.x1} x2={a.x2} fill={a.color} fillOpacity={0.1} stroke="none" />)}
+                <XAxis dataKey="questionNumber" stroke="hsl(var(--muted-foreground))" domain={[1,'dataMax']} />
+                <YAxis stroke="hsl(var(--muted-foreground))" tickFormatter={(v: number) => `${v}s`} />
+                <Tooltip content={({ active, payload, label }: any) => {
+                  if (!active || !payload?.length) return null;
+                  const d = payload[0].payload;
+                  return <div className="glass rounded-xl p-4 border border-border/50 shadow-lg"><p className="text-foreground font-medium">Question {label}</p><p className="text-sm" style={{ color: C[d.subject] }}>Subject: {d.subject}</p><p className="text-sm">Time Spent: {d.timeSpent} seconds</p><p className="text-sm">Result: {d.isCorrect === true ? 'Correct ✅' : d.isCorrect === false ? 'Wrong ❌' : 'Unattempted ⏸️'}</p></div>;
+                }} />
+                <Line type="monotone" dataKey="timeSpent" stroke="#06B6D4" strokeWidth={3} dot={makeDot('#8B5CF6')} activeDot={makeActiveDot('#8B5CF6')} connectNulls={false} />
+              </LineChart>
+            </ResponsiveContainer>
+            <Legend_ />
+          </div>
+        </div>
+      </div>
+    </motion.section>
+  );
+});
+
 export default function AnalysePage() {
   const { attemptId } = useParams<{ attemptId: string }>();
   const [attempt, setAttempt] = useState<any>(null);
   const [selectedSection, setSelectedSection] = useState(0);
   const [analysisFilter, setAnalysisFilter] = useState('all');
   const [loading, setLoading] = useState(true);
-  const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
-
-  useEffect(() => { setExpandedQuestions(new Set()); }, [selectedSection, analysisFilter]);
 
   useEffect(() => {
     attemptAPI.getAttempt(attemptId).then((res: any) => {
@@ -117,248 +532,7 @@ export default function AnalysePage() {
     });
   }, [attempt]);
 
-  const CHART_COLORS: Record<string, string> = {
-    Physics: '#3B82F6', Chemistry: '#10B981', Mathematics: '#8B5CF6',
-    correct: '#10B981', wrong: '#EF4444', unattempted: '#F59E0B', maxMarks: '#D1D5DB'
-  };
-  const PIE_COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#06B6D4'];
-  const REMAINING_TIME_COLOR = '#9CA3AF';
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="glass rounded-xl p-4 border border-border/50 shadow-lg">
-          <p className="text-foreground font-medium">{label}</p>
-          {payload.map((entry: any, i: number) => (
-            <p key={i} style={{ color: entry.color }} className="text-sm">{`${entry.dataKey}: ${entry.value}`}</p>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const PieTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="glass rounded-xl p-4 border border-border/50 shadow-lg">
-          <p className="text-foreground font-medium">{data.subject}</p>
-          <p className="text-sm" style={{ color: payload[0].color }}>
-            {payload[0].dataKey === 'accuracy' ? `Accuracy: ${data.accuracy}%` : `Time: ${data.timeMinutes} min`}
-          </p>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const createSubjectAreas = (data: any[]) => {
-    if (!data || data.length === 0) return [];
-    const areas: any[] = [];
-    let currentSubject: string | null = null;
-    let startQuestion: number | null = null;
-    data.forEach((point, index) => {
-      if (currentSubject !== point.subject) {
-        if (currentSubject && startQuestion !== null)
-          areas.push({ subject: currentSubject, x1: startQuestion, x2: data[index - 1].questionNumber, color: CHART_COLORS[currentSubject] });
-        currentSubject = point.subject;
-        startQuestion = point.questionNumber;
-      }
-    });
-    if (currentSubject && startQuestion !== null)
-      areas.push({ subject: currentSubject, x1: startQuestion, x2: data[data.length - 1].questionNumber, color: CHART_COLORS[currentSubject] });
-    return areas;
-  };
-
-  const SubjectLegend = () => (
-    <div className="flex justify-center gap-6 mt-4 pt-4 border-t border-border/20">
-      {['Physics', 'Chemistry', 'Mathematics'].map((s) => (
-        <div key={s} className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: CHART_COLORS[s] }} />
-          <span className="text-sm text-muted-foreground">{s}</span>
-        </div>
-      ))}
-    </div>
-  );
-
-  const makeDot = (defaultColor: string) => (props: any) => {
-    const { payload, cx, cy } = props;
-    const subjectColor = CHART_COLORS[payload?.subject] || defaultColor;
-    const color = payload?.isCorrect === true ? subjectColor : payload?.isCorrect === false ? '#EF4444' : '#9CA3AF';
-    return <circle cx={cx} cy={cy} r={4} fill={color} stroke={color} strokeWidth={2} />;
-  };
-
-  const makeActiveDot = (defaultColor: string) => (props: any) => {
-    const { payload, cx, cy } = props;
-    const subjectColor = CHART_COLORS[payload?.subject] || defaultColor;
-    const color = payload?.isCorrect === true ? subjectColor : payload?.isCorrect === false ? '#EF4444' : '#9CA3AF';
-    return <circle cx={cx} cy={cy} r={6} fill={color} stroke={color} strokeWidth={2} />;
-  };
-
-  const SubjectPerformanceChart = () => (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass rounded-2xl p-6 card-hover">
-      <div className="flex items-center gap-2 mb-4"><BarChart3 className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Subject Performance</h3></div>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={processedChartData || undefined}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-          <XAxis dataKey="subject" stroke="hsl(var(--muted-foreground))" />
-          <YAxis stroke="hsl(var(--muted-foreground))" allowDecimals={false} />
-          <Tooltip content={<CustomTooltip />} /><Legend />
-          <Bar dataKey="correct" fill={CHART_COLORS.correct} radius={[4,4,0,0]} />
-          <Bar dataKey="wrong" fill={CHART_COLORS.wrong} radius={[4,4,0,0]} />
-          <Bar dataKey="unattempted" fill={CHART_COLORS.unattempted} radius={[4,4,0,0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </motion.div>
-  );
-
-  const SubjectAccuracyChart = () => (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass rounded-2xl p-6 card-hover">
-      <div className="flex items-center gap-2 mb-4"><Target className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Subject Accuracy</h3></div>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={processedChartData || undefined}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-          <XAxis dataKey="subject" stroke="hsl(var(--muted-foreground))" />
-          <YAxis stroke="hsl(var(--muted-foreground))" domain={[0,100]} tickFormatter={(v: number) => `${v}%`} />
-          <Tooltip content={<CustomTooltip />} /><Legend />
-          <Bar dataKey="accuracy" fill="#06B6D4" radius={[4,4,0,0]} name="Accuracy %" />
-        </BarChart>
-      </ResponsiveContainer>
-    </motion.div>
-  );
-
-  const MarksDistributionChart = () => (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass rounded-2xl p-6 card-hover">
-      <div className="flex items-center gap-2 mb-4"><Award className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Marks Distribution</h3></div>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={processedChartData || undefined}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-          <XAxis dataKey="subject" stroke="hsl(var(--muted-foreground))" />
-          <YAxis stroke="hsl(var(--muted-foreground))" />
-          <Tooltip content={<CustomTooltip />} /><Legend />
-          <Bar dataKey="marks" fill="#10B981" radius={[4,4,0,0]} name="Obtained Marks" />
-          <Bar dataKey="maxMarks" fill={CHART_COLORS.maxMarks} radius={[4,4,0,0]} name="Maximum Marks" />
-        </BarChart>
-      </ResponsiveContainer>
-    </motion.div>
-  );
-
-  const TimeSpentChart = () => (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="glass rounded-2xl p-6 card-hover">
-      <div className="flex items-center gap-2 mb-4"><Clock className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Time Spent Distribution</h3></div>
-      <ResponsiveContainer width="100%" height={300}>
-        <PieChart>
-          <Pie data={timeDistributionData || undefined} cx="50%" cy="50%" labelLine={false} label={({ subject, timeMinutes }: any) => `${subject}: ${timeMinutes}min`} outerRadius={80} dataKey="timeMinutes">
-            {timeDistributionData?.map((entry: any, index: number) => (
-              <Cell key={`cell-${index}`} fill={entry.isRemainingTime ? REMAINING_TIME_COLOR : PIE_COLORS[index % PIE_COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip content={<PieTooltip />} />
-          <Legend formatter={(_: any, entry: any) => entry.payload.subject} />
-        </PieChart>
-      </ResponsiveContainer>
-    </motion.div>
-  );
-
-  const ScoreVsQuestionChart = () => {
-    const subjectAreas = createSubjectAreas(lineChartData || []);
-    return (
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="glass rounded-2xl p-6 card-hover">
-        <div className="flex items-center gap-2 mb-4"><TrendingUpIcon className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Score vs Question Number</h3></div>
-        <ResponsiveContainer width="100%" height={350}>
-          <LineChart data={lineChartData || undefined}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-            {subjectAreas.map((area: any, i: number) => <ReferenceArea key={i} x1={area.x1} x2={area.x2} fill={area.color} fillOpacity={0.1} stroke="none" />)}
-            <XAxis dataKey="questionNumber" stroke="hsl(var(--muted-foreground))" domain={[1,'dataMax']} />
-            <YAxis stroke="hsl(var(--muted-foreground))" domain={[0, attempt?.test?.totalMarks || 300]} />
-            <Tooltip content={({ active, payload, label }: any) => {
-              if (active && payload?.length) {
-                const data = payload[0].payload;
-                return (
-                  <div className="glass rounded-xl p-4 border border-border/50 shadow-lg">
-                    <p className="text-foreground font-medium">Question {label}</p>
-                    <p className="text-sm" style={{ color: CHART_COLORS[data.subject] }}>Subject: {data.subject}</p>
-                    <p className="text-sm">Cumulative Score: {data.cumulativeMarks}</p>
-                    <p className="text-sm">This Question: {data.marks > 0 ? '+' : ''}{data.marks}</p>
-                  </div>
-                );
-              }
-              return null;
-            }} />
-            <Line type="monotone" dataKey="cumulativeMarks" stroke="#06B6D4" strokeWidth={3} dot={makeDot('#3B82F6')} activeDot={makeActiveDot('#3B82F6')} connectNulls={false} />
-          </LineChart>
-        </ResponsiveContainer>
-        <SubjectLegend />
-      </motion.div>
-    );
-  };
-
-  const AccuracyProgressionChart = () => {
-    const subjectAreas = createSubjectAreas(lineChartData || []);
-    return (
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="glass rounded-2xl p-6 card-hover">
-        <div className="flex items-center gap-2 mb-4"><Target className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Accuracy Progression During Test</h3></div>
-        <ResponsiveContainer width="100%" height={350}>
-          <LineChart data={lineChartData || undefined}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-            {subjectAreas.map((area: any, i: number) => <ReferenceArea key={i} x1={area.x1} x2={area.x2} fill={area.color} fillOpacity={0.1} stroke="none" />)}
-            <XAxis dataKey="questionNumber" stroke="hsl(var(--muted-foreground))" domain={[1,'dataMax']} />
-            <YAxis stroke="hsl(var(--muted-foreground))" domain={[0,100]} tickFormatter={(v: number) => `${v}%`} />
-            <Tooltip content={({ active, payload, label }: any) => {
-              if (active && payload?.length) {
-                const data = payload[0].payload;
-                return (
-                  <div className="glass rounded-xl p-4 border border-border/50 shadow-lg">
-                    <p className="text-foreground font-medium">After Question {label}</p>
-                    <p className="text-sm" style={{ color: CHART_COLORS[data.subject] }}>Subject: {data.subject}</p>
-                    <p className="text-sm">Overall Accuracy: {data.accuracy}%</p>
-                    <p className="text-sm">This Question: {data.isCorrect === true ? 'Correct ✅' : data.isCorrect === false ? 'Wrong ❌' : 'Unattempted ⏸️'}</p>
-                  </div>
-                );
-              }
-              return null;
-            }} />
-            <Line type="monotone" dataKey="accuracy" stroke="#06B6D4" strokeWidth={3} dot={makeDot('#10B981')} activeDot={makeActiveDot('#10B981')} connectNulls={false} />
-          </LineChart>
-        </ResponsiveContainer>
-        <SubjectLegend />
-      </motion.div>
-    );
-  };
-
-  const TimePerQuestionChart = () => {
-    const subjectAreas = createSubjectAreas(lineChartData || []);
-    return (
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} className="glass rounded-2xl p-6 card-hover">
-        <div className="flex items-center gap-2 mb-4"><Clock className="w-5 h-5 text-primary" /><h3 className="text-lg font-semibold text-foreground">Time Spent per Question</h3></div>
-        <ResponsiveContainer width="100%" height={350}>
-          <LineChart data={lineChartData || undefined}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-            {subjectAreas.map((area: any, i: number) => <ReferenceArea key={i} x1={area.x1} x2={area.x2} fill={area.color} fillOpacity={0.1} stroke="none" />)}
-            <XAxis dataKey="questionNumber" stroke="hsl(var(--muted-foreground))" domain={[1,'dataMax']} />
-            <YAxis stroke="hsl(var(--muted-foreground))" tickFormatter={(v: number) => `${v}s`} />
-            <Tooltip content={({ active, payload, label }: any) => {
-              if (active && payload?.length) {
-                const data = payload[0].payload;
-                return (
-                  <div className="glass rounded-xl p-4 border border-border/50 shadow-lg">
-                    <p className="text-foreground font-medium">Question {label}</p>
-                    <p className="text-sm" style={{ color: CHART_COLORS[data.subject] }}>Subject: {data.subject}</p>
-                    <p className="text-sm">Time Spent: {data.timeSpent} seconds</p>
-                    <p className="text-sm">Result: {data.isCorrect === true ? 'Correct ✅' : data.isCorrect === false ? 'Wrong ❌' : 'Unattempted ⏸️'}</p>
-                  </div>
-                );
-              }
-              return null;
-            }} />
-            <Line type="monotone" dataKey="timeSpent" stroke="#06B6D4" strokeWidth={3} dot={makeDot('#8B5CF6')} activeDot={makeActiveDot('#8B5CF6')} connectNulls={false} />
-          </LineChart>
-        </ResponsiveContainer>
-        <SubjectLegend />
-      </motion.div>
-    );
-  };
+  // chart constants and helpers no longer needed inline — moved to GraphicalAnalysisSection above
 
   if (loading) {
     return (
@@ -400,50 +574,34 @@ export default function AnalysePage() {
     { label: 'Accuracy', value: `${overallStats?.accuracy}%`, icon: Target, color: 'info' },
   ];
 
-  const sectionStatCards = [
-    { label: 'Total', value: sectionStats.total, color: 'primary' },
-    { label: 'Correct', value: sectionStats.correct, color: 'success' },
-    { label: 'Wrong', value: sectionStats.wrong, color: 'error' },
-    { label: 'Unattempted', value: sectionStats.unattempted, color: 'warning' },
-    { label: 'Marks', value: sectionStats.marks, color: 'info' },
-    { label: 'Accuracy', value: `${sectionStats.accuracy}%`, color: 'purple' },
-    { label: 'Time', value: formatTime(sectionStats.totalTime), color: 'primary' },
-  ];
-
-  const filterButtons = [
-    { key: 'all', label: 'All Questions', icon: BookOpen },
-    { key: 'wrong', label: 'Wrong', icon: XCircle },
-    { key: 'unattempted', label: 'Unattempted', icon: MinusCircle },
-  ];
-
   const getColorClasses = (color: string) => {
-    const colors: Record<string, any> = {
+    const map: Record<string, { text: string; light: string }> = {
       primary: { text: 'text-primary', light: 'bg-primary/10' },
       success: { text: 'text-success', light: 'bg-success-light' },
-      error: { text: 'text-error', light: 'bg-error-light' },
+      error:   { text: 'text-error',   light: 'bg-error-light' },
       warning: { text: 'text-warning', light: 'bg-warning-light' },
-      info: { text: 'text-info', light: 'bg-info-light' },
-      purple: { text: 'text-purple', light: 'bg-purple-light' },
+      info:    { text: 'text-info',    light: 'bg-info-light' },
     };
-    return colors[color] || colors.primary;
+    return map[color] || map.primary;
   };
 
   return (
     <div className="min-h-screen bg-background analysis-page" style={{ fontFamily: "'Outfit', sans-serif", fontWeight: '400' }}>
-      {/* Decorative Background */}
+      {/* Subtle background pattern */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/5 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-accent/5 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-info/3 rounded-full blur-3xl" />
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/4 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple/4 rounded-full blur-3xl" />
       </div>
 
       {/* Header */}
       <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
-        className="relative glass-strong border-b border-border/50 sticky top-0 z-50">
+        className="relative glass-strong border-b border-border/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <img src="/nta-small-logo.jpg" alt="NTA Logo" className="w-10 h-10 object-contain" />
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-primary" />
+              </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold text-foreground">{attempt.test.name}</h1>
                 <p className="text-muted-foreground text-sm">Analysis Report • {attempt.candidateName}</p>
@@ -547,258 +705,112 @@ export default function AnalysePage() {
           </div>
         </motion.section>
 
-        {/* Graphical Analysis */}
+        {/* Graphical Analysis — memoized so section/filter changes don't re-render charts */}
         {attempt?.test?.enableGraphicalAnalysis && subjectGroups && Object.keys(subjectGroups).length > 1 && (
-          <motion.section initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.6 }}>
-            <div className="flex items-center gap-2 mb-6">
-              <motion.div animate={{ rotate: [0, 360] }} transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}>
-                <BarChart3 className="w-6 h-6 text-primary" />
-              </motion.div>
-              <h2 className="text-xl font-semibold text-foreground">Graphical Analysis</h2>
-            </div>
-            <div className="mb-8">
-              <motion.h3 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}
-                className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-primary" />Performance Overview
-              </motion.h3>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <SubjectPerformanceChart />
-                <SubjectAccuracyChart />
-                <MarksDistributionChart />
-                <TimeSpentChart />
-              </div>
-            </div>
-            <div className="mb-8">
-              <motion.h3 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.8 }}
-                className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
-                <TrendingUpIcon className="w-5 h-5 text-primary" />Detailed Analysis
-              </motion.h3>
-              <div className="grid grid-cols-1 gap-6">
-                <ScoreVsQuestionChart />
-                <AccuracyProgressionChart />
-                <TimePerQuestionChart />
-              </div>
-            </div>
-          </motion.section>
+          <GraphicalAnalysisSection
+            processedChartData={processedChartData}
+            timeDistributionData={timeDistributionData}
+            lineChartData={lineChartData}
+            totalMarks={attempt?.test?.totalMarks || 300}
+          />
         )}
 
-        {/* Section Analysis */}
-        <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <div className="flex items-center gap-2 mb-6">
+        {/* Section Analysis + Questions — unified panel */}
+        <section>
+          <div className="flex items-center gap-2 mb-4">
             <BookOpen className="w-5 h-5 text-primary" />
             <h2 className="text-xl font-semibold text-foreground">Section Analysis</h2>
           </div>
-          <div className="glass rounded-2xl p-6">
-            {/* Section Tabs */}
-            <div className="flex flex-wrap gap-2 mb-6">
+
+          <div className="glass rounded-2xl overflow-hidden">
+            {/* Section tab bar */}
+            <div className="flex overflow-x-auto border-b border-border/30 bg-secondary/30">
               {attempt.test.sections.map((section: any, index: number) => {
                 const stats = getSectionStats(section.questions);
                 const isSelected = selectedSection === index;
                 return (
-                  <motion.button key={section.id} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => setSelectedSection(index)}
-                    className={`relative px-5 py-3 rounded-xl font-medium transition-all duration-300 ${
-                      isSelected ? 'bg-primary text-primary-foreground shadow-glow' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                    }`}>
-                    <span>{section.name}</span>
-                    <span className={`ml-2 text-sm ${isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
-                      ({stats.correct}/{stats.total})
+                  <button
+                    key={section.id}
+                    onClick={() => { setSelectedSection(index); setAnalysisFilter('all'); }}
+                    className={`flex-shrink-0 px-5 py-3.5 text-sm font-medium border-b-2 transition-all ${
+                      isSelected
+                        ? 'border-primary text-primary bg-background'
+                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                    }`}
+                  >
+                    {section.name}
+                    <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'}`}>
+                      {stats.correct}/{stats.total}
                     </span>
-                    {isSelected && (
-                      <motion.div layoutId="activeSection" className="absolute inset-0 bg-primary rounded-xl -z-10" />
-                    )}
-                  </motion.button>
+                  </button>
                 );
               })}
             </div>
-            {/* Section Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
-              {sectionStatCards.map((stat, index) => {
-                const colorClasses = getColorClasses(stat.color);
-                return (
-                  <motion.div key={stat.label} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: index * 0.03 }} className={`${colorClasses.light} rounded-xl p-4 text-center`}>
-                    <div className={`text-xl font-bold ${colorClasses.text}`}>{stat.value}</div>
-                    <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
-                  </motion.div>
-                );
-              })}
-            </div>
-            {/* Filter Buttons */}
-            <div className="flex flex-wrap gap-2 mb-6">
-              {filterButtons.map((filter) => {
-                const isActive = analysisFilter === filter.key;
-                return (
-                  <motion.button key={filter.key} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => setAnalysisFilter(filter.key)}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all duration-300 ${
-                      isActive
-                        ? filter.key === 'wrong' ? 'bg-error text-error-foreground'
-                          : filter.key === 'unattempted' ? 'bg-warning text-warning-foreground'
-                          : 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                    }`}>
-                    <filter.icon className="w-4 h-4" />
-                    {filter.label}
-                  </motion.button>
-                );
-              })}
-            </div>
-          </div>
-        </motion.section>
 
-        {/* Questions List */}
-        <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-          <div className="glass rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-primary" />
-              {currentSection.name} - {analysisFilter === 'all' ? 'All Questions' : analysisFilter === 'wrong' ? 'Wrong Questions' : 'Unattempted Questions'}
-              <span className="text-sm font-normal text-muted-foreground">({filteredQuestions.length})</span>
-            </h3>
-
-            {filteredQuestions.length === 0 ? (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16">
-                <motion.div animate={{ y: [0, -10, 0] }} transition={{ duration: 2, repeat: Infinity }} className="text-6xl mb-4">
-                  {analysisFilter === 'wrong' ? '🎉' : analysisFilter === 'unattempted' ? '👍' : '📚'}
-                </motion.div>
-                <p className="text-xl font-medium text-foreground">
-                  {analysisFilter === 'wrong' ? 'No wrong questions in this section!' : analysisFilter === 'unattempted' ? 'No unattempted questions!' : 'No questions found.'}
-                </p>
-                <p className="text-muted-foreground mt-2">
-                  {analysisFilter === 'wrong' ? 'Great job! Keep it up!' : analysisFilter === 'unattempted' ? 'You attempted all questions!' : 'Try selecting a different filter.'}
-                </p>
-              </motion.div>
-            ) : (
-              <div className="space-y-4">
-                <AnimatePresence>
-                  {filteredQuestions.map((question: any, index: number) => {
-                    const answer = getAnswerForQuestion(question.id);
-                    const isCorrect = answer?.isCorrect;
-                    const marksAwarded = answer?.marksAwarded || 0;
-                    const timeSpent = answer?.timeSpent || 0;
-                    const originalIndex = currentSection.questions.findIndex((q: any) => q.id === question.id);
-                    const isExpanded = expandedQuestions.has(question.id);
-
-                    const toggleExpanded = () => {
-                      setExpandedQuestions((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(question.id)) next.delete(question.id); else next.add(question.id);
-                        return next;
-                      });
-                    };
-
-                    const statusConfig = isCorrect === true
-                      ? { bg: 'bg-success-light', text: 'text-success', border: 'border-success/30', label: 'Correct', icon: CheckCircle2 }
-                      : isCorrect === false
-                        ? { bg: 'bg-error-light', text: 'text-error', border: 'border-error/30', label: 'Wrong', icon: XCircle }
-                        : { bg: 'bg-warning-light', text: 'text-warning', border: 'border-warning/30', label: 'Unattempted', icon: MinusCircle };
-
-                    const getYourAnswer = () => {
-                      const qType = currentSection.questionType;
-                      if (qType === 'SINGLE_CORRECT' || qType === 'MATRIX_MATCH')
-                        return answer?.selectedOption ? `Option ${answer.selectedOption}` : 'Not attempted';
-                      if (qType === 'MULTIPLE_CORRECT') {
-                        if (!answer?.selectedOptions) return 'Not attempted';
-                        const opts = typeof answer.selectedOptions === 'string'
-                          ? answer.selectedOptions.split(',').map((o: string) => o.trim())
-                          : answer.selectedOptions;
-                        return opts.map((o: string) => `Option ${o}`).join(', ');
-                      }
-                      if (qType === 'INTEGER')
-                        return (answer?.integerAnswer !== null && answer?.integerAnswer !== undefined) ? answer.integerAnswer.toString() : 'Not attempted';
-                      return 'Not attempted';
-                    };
-
-                    const getCorrectAnswer = () => {
-                      const qType = currentSection.questionType;
-                      if (qType === 'SINGLE_CORRECT' || qType === 'MATRIX_MATCH')
-                        return question.correctOption ? `Option ${question.correctOption}` : 'N/A';
-                      if (qType === 'MULTIPLE_CORRECT') {
-                        if (!question.correctOptions) return 'N/A';
-                        const opts = typeof question.correctOptions === 'string'
-                          ? question.correctOptions.split(',').map((o: string) => o.trim())
-                          : question.correctOptions;
-                        return opts.map((o: string) => `Option ${o}`).join(', ');
-                      }
-                      if (qType === 'INTEGER')
-                        return (question.correctInteger !== null && question.correctInteger !== undefined) ? question.correctInteger.toString() : 'N/A';
-                      return 'N/A';
-                    };
-
-                    return (
-                      <motion.div key={question.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }} transition={{ delay: index * 0.02 }}
-                        className={`border-2 ${statusConfig.border} rounded-xl overflow-hidden bg-card/50 hover:bg-card transition-colors`}>
-                        <button onClick={toggleExpanded} className="w-full p-5 flex items-center justify-between gap-4 text-left">
-                          <div className="flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-xl ${statusConfig.bg} flex items-center justify-center`}>
-                              <statusConfig.icon className={`w-5 h-5 ${statusConfig.text}`} />
-                            </div>
-                            <div>
-                              <h4 className="font-semibold text-foreground">Question {originalIndex + 1}</h4>
-                              <p className="text-sm text-muted-foreground">{currentSection.questionType}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <span className={`px-3 py-1.5 rounded-lg text-sm font-medium ${statusConfig.bg} ${statusConfig.text}`}>{statusConfig.label}</span>
-                            <span className={`font-bold text-lg ${marksAwarded > 0 ? 'text-success' : marksAwarded < 0 ? 'text-error' : 'text-muted-foreground'}`}>
-                              {marksAwarded > 0 ? '+' : ''}{marksAwarded}
-                            </span>
-                            {timeSpent > 0 && (
-                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                <Clock className="w-4 h-4" />
-                                <span>{formatTime(timeSpent)}</span>
-                              </div>
-                            )}
-                            <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.3, ease: [0.04, 0.62, 0.23, 0.98] }}>
-                              <ChevronDown className="w-5 h-5 text-muted-foreground" />
-                            </motion.div>
-                          </div>
-                        </button>
-
-                        <AnimatePresence mode="wait">
-                          {isExpanded && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1, transition: { height: { duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] }, opacity: { duration: 0.3, delay: 0.1 } } }}
-                              exit={{ height: 0, opacity: 0, transition: { height: { duration: 0.3, ease: [0.04, 0.62, 0.23, 0.98] }, opacity: { duration: 0.2 } } }}
-                              className="overflow-hidden question-expand" style={{ willChange: 'height, opacity' }}>
-                              <div className="px-5 pb-5 pt-2 border-t border-border/50">
-                                {question.questionImage && (
-                                  <div className="mb-4">
-                                    <img src={question.questionImage} alt={`Question ${originalIndex + 1}`} className="max-w-full h-auto border border-border rounded" />
-                                  </div>
-                                )}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                  <div className="bg-secondary/50 rounded-xl p-4">
-                                    <h5 className="font-medium text-foreground mb-2">Your Answer</h5>
-                                    <p className={`text-lg font-semibold ${isCorrect === true ? 'text-success' : isCorrect === false ? 'text-error' : 'text-muted-foreground'}`}>
-                                      {getYourAnswer()}
-                                    </p>
-                                  </div>
-                                  <div className="bg-success-light rounded-xl p-4">
-                                    <h5 className="font-medium text-foreground mb-2">Correct Answer</h5>
-                                    <p className="text-lg font-semibold text-success">{getCorrectAnswer()}</p>
-                                  </div>
-                                </div>
-                                {question.solutionImage && (
-                                  <div className="mt-4">
-                                    <h5 className="font-medium text-foreground mb-2">Solution</h5>
-                                    <img src={question.solutionImage} alt={`Solution ${originalIndex + 1}`} className="max-w-full h-auto border border-border rounded" />
-                                  </div>
-                                )}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
+            <div className="p-6">
+              {/* Section stat pills */}
+              <div className="flex flex-wrap gap-2 mb-5">
+                {[
+                  { label: 'Total', value: sectionStats.total, cls: 'bg-blue-50 text-blue-700' },
+                  { label: 'Correct', value: sectionStats.correct, cls: 'bg-green-50 text-green-700' },
+                  { label: 'Wrong', value: sectionStats.wrong, cls: 'bg-red-50 text-red-700' },
+                  { label: 'Unattempted', value: sectionStats.unattempted, cls: 'bg-amber-50 text-amber-700' },
+                  { label: 'Marks', value: sectionStats.marks, cls: 'bg-indigo-50 text-indigo-700' },
+                  { label: 'Accuracy', value: `${sectionStats.accuracy}%`, cls: 'bg-purple-50 text-purple-700' },
+                  { label: 'Time', value: formatTime(sectionStats.totalTime), cls: 'bg-gray-100 text-gray-700' },
+                ].map((s) => (
+                  <div key={s.label} className={`${s.cls} rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5`}>
+                    <span className="opacity-60">{s.label}</span>
+                    <span>{s.value}</span>
+                  </div>
+                ))}
               </div>
-            )}
+
+              {/* Filter toggle */}
+              <div className="flex gap-2 mb-6">
+                {[
+                  { key: 'all', label: 'All', count: currentSection.questions.length },
+                  { key: 'wrong', label: 'Wrong', count: sectionStats.wrong },
+                  { key: 'unattempted', label: 'Unattempted', count: sectionStats.unattempted },
+                ].map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => setAnalysisFilter(f.key)}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition border ${
+                      analysisFilter === f.key
+                        ? f.key === 'wrong'
+                          ? 'bg-red-500 text-white border-red-500'
+                          : f.key === 'unattempted'
+                          ? 'bg-amber-400 text-white border-amber-400'
+                          : 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-secondary text-muted-foreground border-transparent hover:bg-secondary/80'
+                    }`}
+                  >
+                    {f.label}
+                    <span className="ml-1.5 opacity-70 text-xs">({f.count})</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Question carousel */}
+              {filteredQuestions.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-5xl mb-3">{analysisFilter === 'wrong' ? '🎉' : '👍'}</div>
+                  <p className="font-medium text-foreground">
+                    {analysisFilter === 'wrong' ? 'No wrong answers in this section!' : 'All questions were attempted!'}
+                  </p>
+                </div>
+              ) : (
+                <QuestionCarousel
+                  key={`${selectedSection}-${analysisFilter}`}
+                  questions={filteredQuestions}
+                  currentSection={currentSection}
+                  getAnswerForQuestion={getAnswerForQuestion}
+                />
+              )}
+            </div>
           </div>
-        </motion.section>
+        </section>
 
         {/* Footer */}
         <motion.footer initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}

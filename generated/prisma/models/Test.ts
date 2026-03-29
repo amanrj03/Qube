@@ -601,10 +601,6 @@ export type BoolFieldUpdateOperationsInput = {
   set?: boolean
 }
 
-export type NullableDateTimeFieldUpdateOperationsInput = {
-  set?: Date | string | null
-}
-
 export type TestCreateNestedOneWithoutTestClassesInput = {
   create?: Prisma.XOR<Prisma.TestCreateWithoutTestClassesInput, Prisma.TestUncheckedCreateWithoutTestClassesInput>
   connectOrCreate?: Prisma.TestCreateOrConnectWithoutTestClassesInput

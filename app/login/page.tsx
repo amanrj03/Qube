@@ -72,6 +72,9 @@ export default function OrgLoginPage() {
             <Link href="/register" className="text-blue-600 hover:underline font-medium">Register here</Link>
           </p>
           <p className="text-sm text-gray-600">
+            <Link href="/forgot-password" className="text-blue-600 hover:underline">Forgot password?</Link>
+          </p>
+          <p className="text-sm text-gray-600">
             Student?{' '}
             <Link href="/login/student" className="text-green-600 hover:underline font-medium">Student login</Link>
           </p>

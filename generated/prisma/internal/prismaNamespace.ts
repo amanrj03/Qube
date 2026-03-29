@@ -1124,7 +1124,9 @@ export const OrganizationScalarFieldEnum = {
   password: 'password',
   logo: 'logo',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
+  updatedAt: 'updatedAt',
+  otpCode: 'otpCode',
+  otpExpiresAt: 'otpExpiresAt'
 } as const
 
 export type OrganizationScalarFieldEnum = (typeof OrganizationScalarFieldEnum)[keyof typeof OrganizationScalarFieldEnum]

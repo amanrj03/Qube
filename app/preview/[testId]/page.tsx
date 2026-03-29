@@ -1,18 +1,34 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 import { testAPI } from '../../../services/api';
 
 export default function PreviewTest() {
   const { testId } = useParams<{ testId: string }>();
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [test, setTest] = useState<any>(null);
   const [currentSection, setCurrentSection] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
 
   useEffect(() => {
-    testAPI.getTestById(testId).then((res) => { setTest(res.data); setLoading(false); }).catch(() => setLoading(false));
-  }, [testId]);
+    if (authLoading) return;
+    if (!user || user.role !== 'org') { router.push('/login'); return; }
+
+    testAPI.getTestById(testId).then((res) => {
+      const t = res.data;
+      // Ownership check — test must belong to this org
+      if (t.organizationId && t.organizationId !== user.id) {
+        setForbidden(true);
+      } else {
+        setTest(t);
+      }
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [testId, user, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentQ = test?.sections?.[currentSection]?.questions?.[currentQuestion];
   const currentSectionObj = test?.sections?.[currentSection];
@@ -29,6 +45,7 @@ export default function PreviewTest() {
   };
 
   if (loading) return <div className="min-h-screen bg-gray-100 flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>;
+  if (forbidden) return <div className="min-h-screen bg-gray-100 flex items-center justify-center"><p className="text-red-600 font-medium">You don't have access to preview this test.</p></div>;
   if (!test) return <div className="min-h-screen bg-gray-100 flex items-center justify-center"><p className="text-red-600">Test not found</p></div>;
 
   return (
