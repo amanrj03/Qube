@@ -23,6 +23,7 @@ export default function StudentDashboard() {
   const { user, loading, logout } = useAuth();
   const [liveTests, setLiveTests] = useState<any[]>([]);
   const [attemptedTests, setAttemptedTests] = useState<any[]>([]);
+  const [testsLoading, setTestsLoading] = useState(true);
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [activeTab, setActiveTab] = useState<'live' | 'results'>('live');
   const profileRef = useRef<HTMLDivElement>(null);
@@ -54,7 +55,9 @@ export default function StudentDashboard() {
       const completedIds = attRes.data.filter((a: any) => a.isCompleted).map((a: any) => a.testId);
       setLiveTests(liveRes.data.filter((t: any) => !completedIds.includes(t.id)));
       setAttemptedTests(attRes.data.filter((a: any) => a.isCompleted));
-    } catch {}
+    } catch {} finally {
+      setTestsLoading(false);
+    }
   };
 
   const calcAccuracy = (attempt: any) => {
@@ -179,7 +182,25 @@ export default function StudentDashboard() {
         {/* Live Tests tab */}
         {activeTab === 'live' && (
           <div>
-            {liveTests.length === 0 ? (
+            {testsLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[1, 2].map((i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                    <div className="h-1.5 w-full bg-gray-100 animate-pulse" />
+                    <div className="p-5 space-y-3">
+                      <div className="h-5 w-2/3 bg-gray-200 rounded-lg animate-pulse" />
+                      <div className="flex gap-2">
+                        <div className="h-4 w-20 bg-gray-100 rounded-full animate-pulse" />
+                        <div className="h-4 w-20 bg-gray-100 rounded-full animate-pulse" />
+                        <div className="h-4 w-20 bg-gray-100 rounded-full animate-pulse" />
+                      </div>
+                      <div className="h-4 w-1/2 bg-gray-100 rounded-lg animate-pulse" />
+                      <div className="h-10 w-full bg-gray-100 rounded-xl animate-pulse mt-2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : liveTests.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
                 <p className="text-4xl mb-3">📭</p>
                 <p className="font-medium text-gray-600">No live tests right now</p>
