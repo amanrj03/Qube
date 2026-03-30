@@ -27,6 +27,7 @@ function GoLiveModal({ test, classes, onClose, onDone, prefill }: {
   const toLocal = (iso?: string) => {
     if (!iso) return '';
     const d = new Date(iso);
+    // Format as local datetime-local string (YYYY-MM-DDTHH:mm) in user's timezone
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
@@ -44,11 +45,13 @@ function GoLiveModal({ test, classes, onClose, onDone, prefill }: {
     if (selectedClasses.length === 0) { setError('Select at least one class.'); return; }
     setSaving(true); setError('');
     try {
+      // Convert local datetime-local string to ISO with timezone offset so server stores correct UTC
+      const toISO = (localStr: string) => new Date(localStr).toISOString();
       await axios.patch(`/api/tests/${test.id}/toggle-live`, {
         isLive: true,
         classIds: selectedClasses,
-        startTime,
-        endTime,
+        startTime: toISO(startTime),
+        endTime: toISO(endTime),
       });
       onDone();
     } catch (e: unknown) {
