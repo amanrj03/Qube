@@ -94,8 +94,10 @@ export default function TestStatusBar() {
           </span>
         </div>
 
-        {/* Battery — only shown on mobile/devices where API works */}
-        {battery.supported && <BatteryIcon level={battery.level} charging={battery.charging} />}
+        {/* Battery — only meaningful on mobile; desktop Chrome always returns 100% */}
+        {battery.supported && battery.level < 100 && (
+          <BatteryIcon level={battery.level} charging={battery.charging} />
+        )}
       </div>
 
       {showOfflineModal && <OfflineModal onDismiss={dismissOfflineModal} />}

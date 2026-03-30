@@ -92,8 +92,15 @@ export default function TestWindow() {
 
   const { timeLeft, formattedTime, start: startTimer, reset: resetTimer } = useTimer(0, handleTimeUp);
 
+  // Declare refs before any effects that use them
+  const timeLeftRef = useRef(0);
+  const answersRef = useRef(answers);
+  const remainingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Keep timeLeftRef in sync so the 60s interval always saves the current value
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
+  // Keep answersRef in sync so the 15s interval never captures a stale closure
+  useEffect(() => { answersRef.current = answers; }, [answers]);
 
   const { enterFullscreen, warningCount, showWarningModal, handleWarningOk, handleWarningTimeout } = useFullscreen(
     async (count) => { try { await attemptAPI.updateWarning({ attemptId }); } catch {} },
@@ -119,20 +126,11 @@ export default function TestWindow() {
     } catch {}
   }, [attemptId, answers]);
 
-  // Keep a ref always pointing to latest answers so the setInterval never captures a stale closure
-  const answersRef = useRef(answers);
-  useEffect(() => { answersRef.current = answers; }, [answers]);
-
-  // Keep a ref to timeLeft so the 60s interval always saves the current value
-  const timeLeftRef = useRef(0);
-
   const syncAnswersLatest = useCallback(async () => {
     try {
       await attemptAPI.syncAnswers({ attemptId, answers: Object.entries(answersRef.current).map(([qId, a]) => ({ questionId: qId, ...a })) });
     } catch {}
   }, [attemptId]);
-
-  const remainingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const fetchAttempt = async () => {
