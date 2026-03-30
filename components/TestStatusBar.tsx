@@ -86,15 +86,15 @@ export default function TestStatusBar() {
   return (
     <>
       <div className="flex items-center justify-between px-3 py-2 border-t border-gray-200 bg-gray-50">
-        {/* WiFi */}
-        <div className="flex items-center gap-1.5">
+        {/* WiFi — shows server connectivity, not device WiFi */}
+        <div className="flex items-center gap-1.5" title="Server connectivity (checks every 5s)">
           <WifiIcon signal={signal} />
           <span className="text-xs text-gray-500">
             {signal === 0 ? 'Offline' : signal === 1 ? 'Poor' : signal === 2 ? 'Fair' : signal === 3 ? 'Good' : 'Strong'}
           </span>
         </div>
 
-        {/* Battery */}
+        {/* Battery — only shown on mobile/devices where API works */}
         {battery.supported && <BatteryIcon level={battery.level} charging={battery.charging} />}
       </div>
 

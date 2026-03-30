@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 
 export interface BatteryInfo {
-  level: number;       // 0–100
+  level: number;
   charging: boolean;
   supported: boolean;
 }
@@ -17,10 +17,14 @@ export function useBattery(): BatteryInfo {
 
     const update = () => {
       if (!battery) return;
+      const level = Math.round(battery.level * 100);
+      // On desktop Chrome, getBattery always returns level=1.0 and charging=true
+      // We detect this and hide the indicator (not useful info)
+      const isDesktopFallback = level === 100 && battery.charging && battery.chargingTime === 0 && battery.dischargingTime === Infinity;
       setInfo({
-        level: Math.round(battery.level * 100),
+        level,
         charging: battery.charging,
-        supported: true,
+        supported: !isDesktopFallback,
       });
     };
 
@@ -29,12 +33,16 @@ export function useBattery(): BatteryInfo {
       update();
       b.addEventListener('levelchange', update);
       b.addEventListener('chargingchange', update);
+      b.addEventListener('chargingtimechange', update);
+      b.addEventListener('dischargingtimechange', update);
     }).catch(() => {});
 
     return () => {
       if (battery) {
         battery.removeEventListener('levelchange', update);
         battery.removeEventListener('chargingchange', update);
+        battery.removeEventListener('chargingtimechange', update);
+        battery.removeEventListener('dischargingtimechange', update);
       }
     };
   }, []);
