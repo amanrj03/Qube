@@ -420,10 +420,13 @@ function CreateTestForm() {
                           {(section.questionType === 'SINGLE_CORRECT' || section.questionType === 'MATRIX_MATCH') && (
                             <div>
                               <label className="block text-xs text-gray-500 mb-1">Correct Option</label>
-                              <select value={q.correctOption} onChange={(e) => updateQuestion(si, qi, 'correctOption', e.target.value)}
-                                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-                                {['A','B','C','D'].map((o) => <option key={o} value={o}>{o}</option>)}
-                              </select>
+                              <div className="flex gap-1.5">
+                                {['A','B','C','D'].map((o) => (
+                                  <label key={o} className={`flex items-center justify-center w-9 h-9 border rounded-lg cursor-pointer text-xs font-semibold transition ${q.correctOption === o ? 'bg-blue-100 border-blue-400 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-100'}`}>
+                                    <input type="radio" name={`correct-${q.id}`} checked={q.correctOption === o} onChange={() => updateQuestion(si, qi, 'correctOption', o)} className="hidden" />{o}
+                                  </label>
+                                ))}
+                              </div>
                             </div>
                           )}
                           {section.questionType === 'MULTIPLE_CORRECT' && (
@@ -441,8 +444,20 @@ function CreateTestForm() {
                           {section.questionType === 'INTEGER' && (
                             <div>
                               <label className="block text-xs text-gray-500 mb-1">Correct Integer</label>
-                              <input type="number" value={q.correctInteger} onChange={(e) => updateQuestion(si, qi, 'correctInteger', e.target.value)}
-                                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Integer answer" />
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="-?[0-9]*"
+                                value={q.correctInteger}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === '' || val === '-' || /^-?\d+$/.test(val)) {
+                                    updateQuestion(si, qi, 'correctInteger', val);
+                                  }
+                                }}
+                                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                placeholder="e.g. 42"
+                              />
                             </div>
                           )}
                         </div>
